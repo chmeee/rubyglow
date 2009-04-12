@@ -27,4 +27,29 @@ That's why i'm left with two options:
 * Do the same thing as original afterglow, using eval
 * Create a DSL to describe the propierties
 
-I guess the second option is more in the ruby way.
+I guess the second option is more in the ruby way. That's why I've come up with
+this idea to configure afterglow:
+
+    Afterglow::properties do 
+      cluster :event do |fields|
+        regex_replace(".*?\\.(.*\\..*)") if (fields[1] !~ /\d+$/
+      end
+      size :all, 0.2 { |fields| fields[1] =~ /192.*/ }
+      color :source, springgreen {|fields| fields[0] =~ /10\./ }
+    end
+
+Commands will be:
+
+    color :all :source :target :event :edge :sourcetarget
+    size :all :source :target :event
+    threshold :all :source :event :target
+    shape :source :target :event
+    sum :source :target :event
+    label :source :target :event
+    url
+    cluster :source :target :event
+    maxnodesize
+    variable
+    exit
+
+
