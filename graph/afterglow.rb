@@ -6,6 +6,9 @@ require 'singleton'
 
 module Afterglow
 
+VERSION = "1.5.9" # afterglow version that is 'transalated' to ruby
+SHAPES = %{ box polygon circle ellipse invtriangle octagon pentagon diamond
+point triangle plaintext }
 COLORS = %w{ aliceblue antiquewhite antiquewhite1 antiquewhite2
 antiquewhite3 antiquewhite4 aquamarine aquamarine1 aquamarine2 aquamarine3
 aquamarine4 azure azure1 azure2 azure3 azure4 beige bisque bisque1
@@ -94,40 +97,100 @@ tomato tomato1 tomato2 tomato3 tomato4 transparent turquoise turquoise1
 turquoise2 turquoise3 turquoise4 violet violetred violetred1 violetred2
 violetred3 violetred4 wheat wheat1 wheat2 wheat3 wheat4 white invisible }
 
-def property_file(prop_file_name)
-  File.open(prop_file_name) do |prop_file|
-    prop_file.each_with_index do |line, line_no|
-      line.chomp!
-      next if line =~ /^\s*#/ or line =~ /^\s*$/
-      line.gsub!(/#.*$/,'')
+class Data
+  def initialize(io, props)
+    @tuples = Array.new
+    @props  = props
+
+    parse(io)
+  end
+
+  def parse(io)
+    io.lines.to_a[opts[:skip_lines]...opts[:skip_lines]+opts[:max_lines]].each do |line|
+      tuple = Tuple.new(line)
+
+      tuple.cluster!(@props[:all_clusters])
+      tuple.cluster!(@props[:soruce_clusters])
+      tuple.cluster!(@props[:event_clusters])
+      tuple.cluster!(@props[:target_clusters])
+
+      @tuples << tuple
 
     end
   end
+end
+
+class Tuple
+  attr_reader :source, :target, :event
+
+  def initilize(data)
+    @fields = FasterCSV.parse_line(data)
+    @source = @fields[0]
+
+    if opts[:two_nodes]
+      @target = @fields[1]
+    else
+      @event  = @fields[1]
+      @target = @fields[2]
+    end
+  end
+
+  def cluster!(blocks)
+    
+  end
+end
+
+class GraphViz
+  def render(data, props)
+    puts "digraph structs {"
+    if props[:label]
+      puts "graph [label=\"AfterGlow #{VERSION}"
+      puts " - Split Mode: #{$eventNodeSplitMode}" if($eventNodeSplitMode) 
+      puts " - Omit Threshold: #{$omitThreshold}" if ($omitThreshold)
+      puts " - Source Threshold: #{$sourceThreshold}" if ($sourceThreshold)
+      puts " - Event Threshold: #{$eventThreshold}" if ($eventThreshold)
+      puts " - Target Threshold: #{$targetThreshold}" if ($targetThreshold)
+      puts " - Source Fan Out: #{$sourceFanOutThreshold}" if ($sourceFanOutThreshold)
+      puts " - Event Fan Out: #{$eventFanOutThreshold}" if ($eventFanOutThreshold)
+      puts " - Property File: #{$propFileName}" if ($propFileName)
+      puts "\", fontsize=8]"
+    else 
+      puts "graph [label=\"AfterGlow #{VERSION}\", fontsize=8];"
+    end
 end
 
 class Properties
   include Singleton
 
-  def initizlize
+  def initizlize(opts)
+    @props = opts # Properties and command-line options get mixed in one hash
 
+    require "#{@props[:prop_filename]}" if @props[:prop_filename] and File.exists?(@props[:prop_filename])
   end
-  
-  def method_missing(m, *args)
-    commands = %w{ color size threshold shape sum label uri cluster maxnodesize variable exit }
+
+  def [](key)
+    @props[key]
+  end
+
+  def []=(key, value)
+    @props[key] = value
+  end
+
+  def method_missing(m, *args, &block)
+    commands = [:color, :size, :threshold, :shape, :sum, :label, :uri, :cluster, :maxnodesize]
 
     if commands.include?(m)
-
+      if args.empty?
+       field = m
+        @blocks[m] << block
+      else
+        i = [m, args.first].join(".").to_sym
+        @blocks[i] << block
+      end
+    else
+      super
     end
   end
-
-
-
-end
-
-
-
-def propierties &block
-  
 end
 
 end
@@ -144,7 +207,7 @@ opts = Trollop::options do
   opt :max_node_size, "the maximum size for a node", :short => "-m", :type => :float, :default => 0.2
   opt :node_labels, "don't print node labels", :short => "-n", :default => true
   opt :omit_threshold, "omit threshold (minimum count for nodes to be displayed). Non-connected nodes will be filtered too.", :short => "-o"
-  opt :event_node_split_mode, "split mode for predicate nodes where mode is\n\t\t\t\t\t  0 = only one unique predicate node (default)\n\t\t\t\t\t  1 = one predicate node per unique subject node.\n\t\t\t\t\t  2 = one predicate node per unique target node.\n\t\t\t\t\t  3 = one predicate node per unique source/target node.", :short => "-p"
+  opt :event_node_split_mode, "split mode for predicate nodes where mode is\n\t\t\t\t\t  0 = only one unique predicate node\n\t\t\t\t\t  1 = one predicate node per unique subject node.\n\t\t\t\t\t  2 = one predicate node per unique target node.\n\t\t\t\t\t  3 = one predicate node per unique source/target node.", :short => "-p", :type => :integer, :default => 0
   opt :split_source_and_target_nodes, "split subject and object nodes", :short => "-s"
   opt :two_nodes, "two node mode (skip over objects)", :short => "-t"
   opt :url, "export URL tags", :short => "-u"
@@ -152,3 +215,7 @@ opts = Trollop::options do
   opt :label_color, "text label color", :short => "-x", :type => :string, :default => "black"
 end
 
+
+props = Afterglow::Propierties.new(opts)
+data = Afterglow::Data.new(STDIN, props)
+Afterglow::GraphViz.render(data, props)
